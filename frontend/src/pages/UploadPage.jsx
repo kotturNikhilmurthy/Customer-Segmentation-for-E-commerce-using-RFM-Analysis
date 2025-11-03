@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Upload, FileText, CheckCircle, AlertCircle, Loader } from 'lucide-react'
-import axios from 'axios'
+import api from '../lib/api'
 
 const UploadPage = ({ setAnalysisData }) => {
   const [file, setFile] = useState(null)
@@ -53,7 +53,7 @@ const UploadPage = ({ setAnalysisData }) => {
     formData.append('file', file)
 
     try {
-      const response = await axios.post('/api/upload', formData, {
+  const response = await api.post('/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },

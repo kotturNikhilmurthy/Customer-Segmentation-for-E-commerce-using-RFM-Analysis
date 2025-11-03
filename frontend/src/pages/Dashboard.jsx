@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Users, DollarSign, PieChart, TrendingUp, Download, AlertCircle } from 'lucide-react'
-import axios from 'axios'
+import api from '../lib/api'
 import {
   PieChart as RechartsPie,
   Pie,
@@ -35,10 +35,10 @@ const Dashboard = () => {
     try {
       setLoading(true)
       const [summaryRes, distributionRes, insightsRes, scatterRes] = await Promise.all([
-        axios.get('/api/summary'),
-        axios.get('/api/distribution'),
-        axios.get('/api/insights'),
-        axios.get('/api/scatter-data')
+        api.get('/summary'),
+        api.get('/distribution'),
+        api.get('/insights'),
+        api.get('/scatter-data')
       ])
 
       setSummary(summaryRes.data)
@@ -55,7 +55,7 @@ const Dashboard = () => {
 
   const handleExport = async () => {
     try {
-      const response = await axios.get('/api/export', {
+      const response = await api.get('/export', {
         responseType: 'blob'
       })
       const url = window.URL.createObjectURL(new Blob([response.data]))
