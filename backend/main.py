@@ -1,6 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import StreamingResponse
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -9,12 +9,27 @@ import os
 from typing import Dict, Any
 import json
 
+
+def _parse_allowed_origins(raw_origins: str) -> list[str]:
+    """Return a cleaned list of allowed origins from a comma-separated string."""
+    origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    return origins or ["http://localhost:3000"]
+
+
+RAW_ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS") or os.getenv("CORS_ORIGINS", "http://localhost:3000")
+ALLOWED_ORIGINS = _parse_allowed_origins(RAW_ALLOWED_ORIGINS)
+ALLOW_ALL_ORIGINS = "*" in [origin.strip() for origin in ALLOWED_ORIGINS]
+MAX_UPLOAD_SIZE_BYTES = int(os.getenv("MAX_UPLOAD_SIZE", "10485760"))  # 10 MB default
+EXPORT_FILENAME = os.getenv("EXPORT_FILENAME", "rfm_analysis_results.csv")
+
 app = FastAPI(title="RFM Analytics API", version="1.0.0")
 
 # CORS middleware
+CORS_ALLOW_ORIGINS = ["*"] if ALLOW_ALL_ORIGINS else ALLOWED_ORIGINS
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ALLOW_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -158,6 +173,12 @@ async def upload_file(file: UploadFile = File(...)):
     try:
         # Read file
         contents = await file.read()
+
+        if len(contents) > MAX_UPLOAD_SIZE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Uploaded file exceeds the maximum allowed size of {MAX_UPLOAD_SIZE_BYTES} bytes.",
+            )
         
         # Determine file type and read accordingly
         if file.filename.endswith('.csv'):
@@ -357,16 +378,32 @@ async def export_results():
     
     rfm_df = uploaded_data['rfm_df']
     
-    # Create export file
-    output_file = "rfm_results.csv"
-    rfm_df.to_csv(output_file, index=False)
-    
-    return FileResponse(
-        output_file,
+    csv_buffer = io.StringIO()
+    rfm_df.to_csv(csv_buffer, index=False)
+    csv_buffer.seek(0)
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{EXPORT_FILENAME}"'
+    }
+
+    return StreamingResponse(
+        iter([csv_buffer.getvalue()]),
         media_type="text/csv",
-        filename="rfm_analysis_results.csv"
+        headers=headers
     )
+
+
+@app.get("/health")
+async def health_check():
+    """Simple health check endpoint for monitoring."""
+    return {
+        "status": "ok",
+        "timestamp": datetime.utcnow().isoformat(),
+        "has_uploaded_data": uploaded_data['rfm_df'] is not None
+    }
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run(app, host=host, port=port)
